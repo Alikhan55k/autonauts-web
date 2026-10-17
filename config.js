@@ -3,7 +3,7 @@
 window.AUTONAUTS = {
   eventName: "NaSCon'26 - AutoNauts demo",
   supabaseUrl: "https://drlpnbudkzxwoquydazh.supabase.co",
-  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRybHBuYnVka3p4d29xdXlkYXpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxNTU1NjYsImV4cCI6MjEwNzczMTU2Nn0.oVH2YHsSFeJu5E-9y2qY0CZOwak_GDDexe2KL8RN19s",
+  supabaseAnonKey: "PASTE_ANON_PUBLISHABLE_KEY_HERE",
   urls: {
     sessions: "https://YOUR-N8N/webhook/autonauts-sessions",
     register: "https://YOUR-N8N/webhook/autonauts-register",
