@@ -1,0 +1,58 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Register - AutoNauts</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top"><div class="in"><div><p class="brand">AutoNauts</p><h1 id="evt">Event registration</h1><small>Register, pay, get your QR ticket. No manual steps.</small></div></div></header>
+<main class="narrow">
+<div class="card" id="formCard">
+<form id="f" novalidate>
+<label for="session">Session</label><select id="session" required><option value="">Loading sessions...</option></select>
+<div id="fee" class="muted"></div>
+<label for="team">Team name (optional)</label><input id="team" maxlength="100" autocomplete="organization">
+<div class="row"><div><label for="name">Leader name</label><input id="name" required maxlength="100" autocomplete="name"></div>
+<div><label for="phone">Phone</label><input id="phone" maxlength="30" autocomplete="tel" inputmode="tel"></div></div>
+<label for="email">Leader email</label><input id="email" type="email" required maxlength="200" autocomplete="email">
+<div class="row"><div><label for="count">Team members</label><input id="count" type="number" min="1" max="10" value="1"></div></div>
+<label for="members">Other member names (comma separated, optional)</label><input id="members" maxlength="400">
+<p style="margin-top:18px"><button id="go" type="submit">Register and get voucher</button></p>
+<div id="msg"></div>
+</form></div>
+<div class="card hidden" id="done">
+<h2 style="margin-top:0">You are registered</h2>
+<p>Registration code: <b id="code"></b></p>
+<ol class="steps"><li>Check your email for the payment voucher (<span id="mailnote"></span>).</li><li>Pay <b id="amt"></b> using the bank details.</li><li>Tap the button below and send your payment screenshot with the Transaction ID in the caption.</li></ol>
+<p><a class="btn" id="tg" target="_blank" rel="noopener">Send payment proof on Telegram</a></p></div>
+</main>
+<script src="config.js"></script>
+<script>
+const C=window.AUTONAUTS,$=id=>document.getElementById(id);let sessions=[];
+$('evt').textContent=C.eventName;
+const show=(t,c)=>{$('msg').innerHTML='<div class="msg '+c+'"></div>';$('msg').firstChild.textContent=t};
+async function loadSessions(){
+ // 1) straight from Supabase (public view, no n8n needed)  2) fallback: n8n sessions webhook
+ try{
+  const r=await fetch(C.supabaseUrl+'/rest/v1/v_open_sessions?select=*&order=session_date.asc',{headers:{apikey:C.supabaseAnonKey,Authorization:'Bearer '+C.supabaseAnonKey}});
+  if(!r.ok)throw new Error('supabase '+r.status);
+  return (await r.json()).map(x=>({id:x.id,title:x.title,session_date:x.session_date,venue:x.venue,categories:{name:x.category,fee_pkr:x.fee_pkr}}));
+ }catch(e1){console.warn('Supabase sessions failed:',e1.message);
+  const r=await fetch(C.urls.sessions);const d=await r.json();return d.sessions||[]}}
+loadSessions().then(list=>{
+ sessions=list;const s=$('session');
+ s.innerHTML='<option value="">Choose a session</option>'+sessions.map(x=>'<option value="'+x.id+'">'+(x.categories&&x.categories.name?x.categories.name+' - ':'')+x.title.replace(/</g,'&lt;')+' ('+x.session_date+')</option>').join('');
+ if(!sessions.length)s.innerHTML='<option value="">No open sessions</option>';
+}).catch(e=>{console.error('Could not load sessions',e);$('session').innerHTML='<option value="">Could not load sessions</option>'});
+$('session').onchange=()=>{const x=sessions.find(s=>s.id===$('session').value);$('fee').textContent=x&&x.categories?'Registration fee: PKR '+Number(x.categories.fee_pkr).toLocaleString('en-US'):''};
+$('f').onsubmit=async e=>{e.preventDefault();$('msg').innerHTML='';
+ const body={session_id:$('session').value,team_name:$('team').value,leader_name:$('name').value,leader_email:$('email').value,leader_phone:$('phone').value,members_count:$('count').value,
+  member_names:$('members').value.split(',').map(x=>x.trim()).filter(Boolean)};
+ if(!body.session_id)return show('Please choose a session.','err');
+ if(body.leader_name.trim().length<2)return show('Please enter your name.','err');
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.leader_email))return show('Please enter a valid email.','err');
+ $('go').disabled=true;$('go').textContent='Registering...';
+ try{const r=await fetch(C.urls.register,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!d.ok)throw new Error(d.error||'Registration failed');
+  $('formCard').classList.add('hidden');$('done').classList.remove('hidden');
+  $('code').textContent=d.reg_code;$('amt').textContent='PKR '+Number(d.amount_pkr).toLocaleString('en-US');$('tg').href=d.telegram_link;
+  $('mailnote').textContent=d.email_sent?'sent to '+body.leader_email:'email could not be sent, use the details shown by the organizer';
+ }catch(err){show(err.message||'Something went wrong. Please try again.','err')}
+ $('go').disabled=false;$('go').textContent='Register and get voucher'};
+</script></body></html>

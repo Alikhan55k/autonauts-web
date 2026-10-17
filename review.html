@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review - AutoNauts</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top"><div class="in"><div><p class="brand">AutoNauts</p><h1>How was the session?</h1><small>Your feedback takes one minute.</small></div></div></header>
+<main class="narrow"><div class="card" id="card">
+<form id="f"><label>Overall rating (1 = poor, 10 = excellent)</label><div class="rating" id="rating"></div>
+<label for="comment">Comments (optional)</label><textarea id="comment" maxlength="1500"></textarea>
+<label><input type="checkbox" id="rec" style="width:auto"> I would recommend this session</label>
+<label><input type="checkbox" id="next" style="width:auto"> Keep me posted about the next event</label>
+<label><input type="checkbox" id="work" style="width:auto"> I am interested in workshops</label>
+<p><button id="go" type="submit">Submit review</button></p><div id="msg"></div></form></div></main>
+<script src="config.js"></script>
+<script>
+const C=window.AUTONAUTS,$=id=>document.getElementById(id);let rating=0;
+const token=new URLSearchParams(location.search).get('t')||'';
+const R=$('rating');for(let i=1;i<=10;i++){const b=document.createElement('button');b.type='button';b.textContent=i;b.onclick=()=>{rating=i;[...R.children].forEach(x=>x.classList.toggle('on',x===b))};R.appendChild(b)}
+const show=(t,c)=>{$('msg').innerHTML='<div class="msg '+c+'"></div>';$('msg').firstChild.textContent=t};
+if(!token)show('This review link is incomplete. Please use the link from your email.','err');
+$('f').onsubmit=async e=>{e.preventDefault();if(!token)return;if(!rating)return show('Please choose a rating.','err');
+ $('go').disabled=true;
+ try{const r=await fetch(C.urls.review,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,rating,comment:$('comment').value,would_recommend:$('rec').checked,wants_next_event:$('next').checked,interested_in_workshops:$('work').checked})});
+  const d=await r.json();
+  if(d.ok){$('card').innerHTML='<h2 style="margin-top:0">Thank you!</h2><p>Your review was saved.</p>'}else{show(d.error||'Could not save your review.','err');$('go').disabled=false}
+ }catch(err){show('No connection. Please try again.','err');$('go').disabled=false}};
+</script></body></html>

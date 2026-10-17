@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gate scanner - AutoNauts</title><link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script></head><body>
+<header class="top"><div class="in"><div><p class="brand">AutoNauts</p><h1>Gate scanner</h1><small>Scan the ticket QR. Check-in, welcome email and dashboard update automatically.</small></div></div></header>
+<main class="narrow">
+<div class="card" id="setup">
+<div class="row"><div><label for="pin">Gate PIN</label><input id="pin" type="password" autocomplete="off" inputmode="numeric"></div>
+<div><label for="gate">Gate name</label><input id="gate" value="gate-1" maxlength="40"></div></div>
+<p><button id="start">Start camera</button></p>
+</div>
+<div class="card hidden" id="scanner"><div id="reader" style="width:100%"></div>
+<div id="result" class="hidden"></div>
+<details style="margin-top:14px"><summary>Camera not working? Enter the ticket code</summary>
+<label for="manual">Ticket code</label><input id="manual" autocomplete="off"><p><button class="sec" id="send">Check in</button></p></details></div>
+</main>
+<script src="config.js"></script>
+<script>
+const C=window.AUTONAUTS,$=id=>document.getElementById(id);let busy=false,last='',lastAt=0,qr=null;
+try{$('pin').value=sessionStorage.getItem('gpin')||'';$('gate').value=sessionStorage.getItem('ggate')||'gate-1'}catch(e){}
+function beep(ok){try{const a=new AudioContext(),o=a.createOscillator();o.frequency.value=ok?880:220;o.connect(a.destination);o.start();setTimeout(()=>o.stop(),ok?150:400)}catch(e){}}
+function paint(cls,title,sub){const r=$('result');r.className=cls;r.innerHTML='<h2></h2><div></div>';r.firstChild.textContent=title;r.lastChild.textContent=sub;setTimeout(()=>{if(r.firstChild.textContent===title)r.className='hidden'},4000)}
+async function submit(token){
+ if(busy)return;busy=true;
+ try{const r=await fetch(C.urls.scan,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,pin:$('pin').value,gate:$('gate').value})});
+  const d=await r.json();
+  if(r.status===401){beep(false);paint('bad','Wrong PIN','Check the gate PIN')}
+  else if(d.ok){beep(true);paint('ok','Welcome, '+(d.team_name||d.leader_name),(d.session_title||'')+' - '+(d.members_count||1)+' member(s)')}
+  else if(d.result==='already_used'){beep(false);paint('warn','Already checked in',d.message||'This ticket was already scanned')}
+  else{beep(false);paint('bad',({invalid:'Invalid ticket',not_paid:'Not paid',void:'Ticket cancelled',session_closed:'Session closed',wrong_day:'Wrong day'})[d.result]||'Rejected',d.message||'')}
+ }catch(e){paint('bad','No connection','Check the internet and scan again')}
+ setTimeout(()=>{busy=false},1500)}
+$('start').onclick=async()=>{
+ try{sessionStorage.setItem('gpin',$('pin').value);sessionStorage.setItem('ggate',$('gate').value)}catch(e){}
+ if(!$('pin').value)return alert('Enter the gate PIN');
+ $('setup').classList.add('hidden');$('scanner').classList.remove('hidden');
+ try{qr=new Html5Qrcode('reader');await qr.start({facingMode:'environment'},{fps:10,qrbox:250},txt=>{const now=Date.now();if(txt===last&&now-lastAt<4000)return;last=txt;lastAt=now;submit(txt.trim())},()=>{})}
+ catch(e){paint('warn','Camera unavailable','Allow camera access (HTTPS required) or use the manual box')}};
+$('send').onclick=()=>{const v=$('manual').value.trim();if(v){submit(v);$('manual').value=''}};
+</script></body></html>

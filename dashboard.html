@@ -1,0 +1,103 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard - AutoNauts</title><link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script></head><body>
+<header class="top"><div class="in"><div><p class="brand">AutoNauts</p><h1>Organizer dashboard</h1><small><span class="live"></span><span id="liveTxt">Live</span></small></div>
+<button class="sec hidden" id="logout" >Log out</button></div></header>
+<main>
+<div class="card hidden" id="login" style="max-width:420px;margin:30px auto">
+<h2 style="margin-top:0">Organizer login</h2>
+<label for="em">Email</label><input id="em" type="email" autocomplete="username">
+<label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+<p><button id="doLogin">Log in</button></p><div id="lmsg"></div></div>
+
+<div id="app" class="hidden">
+<div class="card"><div class="row">
+<div><label for="dateF">Date</label><input type="date" id="dateF"></div>
+<div><label for="sessF">Session</label><select id="sessF"></select></div>
+<div style="align-self:end"><button class="sec" id="allDates">All dates</button></div></div></div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="card"><b>Organizer actions</b> <span class="muted" id="actSess"></span>
+<div class="row" style="margin-top:8px;align-items:end"><div style="flex:0 1 200px"><label for="opin">Organizer PIN</label><input id="opin" type="password" autocomplete="off"></div>
+<div><button class="bad" id="closeBtn">Close session and mark no-shows</button></div>
+<div><button id="revBtn">Email review links to checked-in attendees</button></div></div><div id="actMsg"></div></div>
+
+<div class="grid2">
+<div class="card"><b>Live check-ins</b><div class="tablewrap"><table id="feed"></table></div></div>
+<div class="card"><b>Check-ins by hour</b><div id="hours" style="margin-top:22px"></div><br><b>No-show list</b><div class="tablewrap"><table id="noshow"></table></div></div>
+</div>
+<div class="card"><b>Registrations and payments</b><div class="tablewrap"><table id="regs"></table></div></div>
+<div class="card"><b>Reviews</b> <span class="muted" id="rvSum"></span><div class="tablewrap"><table id="reviews"></table></div></div>
+</div>
+</main>
+<script src="config.js"></script>
+<script>
+const C=window.AUTONAUTS,$=id=>document.getElementById(id);
+const sb=supabase.createClient(C.supabaseUrl,C.supabaseAnonKey);
+let stats=[],sel=null,timer=null;
+const fmtT=s=>s?new Date(s).toLocaleTimeString('en-GB',{timeZone:'Asia/Karachi',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+function el(tag,txt,cls){const e=document.createElement(tag);if(txt!==undefined)e.textContent=txt;if(cls)e.className=cls;return e}
+function fillTable(t,heads,rows,empty){t.innerHTML='';const h=el('tr');heads.forEach(x=>h.appendChild(el('th',x)));t.appendChild(h);
+ if(!rows.length){const r=el('tr'),d=el('td',empty||'Nothing yet','muted');d.colSpan=heads.length;r.appendChild(d);t.appendChild(r);return}
+ rows.forEach(cells=>{const r=el('tr');cells.forEach(c=>{const d=el('td');if(c&&c.pill){d.appendChild(el('span',c.pill.replace('_',' '),'pill '+c.pill)) }else d.textContent=c==null?'':c;r.appendChild(d)});t.appendChild(r)})}
+
+async function boot(){const {data}=await sb.auth.getSession();data.session?start():showLogin()}
+function showLogin(){$('login').classList.remove('hidden');$('app').classList.add('hidden');$('logout').classList.add('hidden')}
+$('doLogin').onclick=async()=>{const {error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});
+ if(error){$('lmsg').innerHTML='<div class="msg err"></div>';$('lmsg').firstChild.textContent=error.message}else start()};
+$('logout').onclick=async()=>{await sb.auth.signOut();location.reload()};
+
+async function start(){$('login').classList.add('hidden');$('app').classList.remove('hidden');$('logout').classList.remove('hidden');
+ await loadSessions();subscribe();await refresh()}
+
+async function loadSessions(){const {data,error}=await sb.from('v_session_stats').select('*').order('session_date',{ascending:false});
+ if(error){console.error(error);return}
+ stats=data||[];buildSelect()}
+function buildSelect(){const d=$('dateF').value;const list=stats.filter(s=>!d||s.session_date===d);
+ const s=$('sessF');const keep=sel;s.innerHTML='';
+ list.forEach(x=>{const o=el('option',x.title+' ('+x.session_date+')');o.value=x.session_id;s.appendChild(o)});
+ if(!list.length)s.appendChild(el('option','No sessions on this date'));
+ sel=list.find(x=>x.session_id===keep)?keep:(list[0]&&list[0].session_id)||null;s.value=sel||''}
+$('dateF').onchange=()=>{buildSelect();refresh()};
+$('allDates').onclick=e=>{e.preventDefault();$('dateF').value='';buildSelect();refresh()};
+$('sessF').onchange=()=>{sel=$('sessF').value;refresh()};
+
+async function refresh(){
+ const {data}=await sb.from('v_session_stats').select('*');stats=data||stats;
+ const st=stats.find(x=>x.session_id===sel);
+ $('actSess').textContent=st?'for: '+st.title+' ('+st.status+')':'';
+ const k=$('kpis');k.innerHTML='';
+ const tiles=st?[['Registered',st.registered],['Approved',st.approved],['In payment review',st.pending_review],['Checked in',st.checked_in],['No-shows',st.no_show],['Revenue (PKR)',Number(st.revenue_pkr).toLocaleString('en-US')],['Reviews',st.review_count],['Avg rating',st.avg_rating||'-']]:[];
+ tiles.forEach(([a,b])=>{const d=el('div',undefined,'kpi'+((a==='No-shows'||a==='In payment review')&&Number(b)>0?' warn':''));d.appendChild(el('b',b));d.appendChild(el('span',a));k.appendChild(d)});
+ if(!sel)return;
+ const q=(v)=>sb.from(v).select('*').eq('session_id',sel);
+ const [feed,hrs,ns,regs,rv]=await Promise.all([
+  q('v_checkin_feed').order('scanned_at',{ascending:false}).limit(15),q('v_checkins_by_hour').order('hour_pkt'),q('v_no_shows'),
+  q('v_registrations').order('created_at',{ascending:false}).limit(200),q('v_reviews_feed').order('submitted_at',{ascending:false}).limit(50)]);
+ fillTable($('feed'),['Time','Team','Reg','Gate'],(feed.data||[]).map(r=>[fmtT(r.scanned_at),r.team_name||r.leader_name,r.reg_code,r.gate]),'No check-ins yet');
+ const H=$('hours');H.innerHTML='';const hd=hrs.data||[];
+ if(!hd.length)H.appendChild(el('span','No check-ins yet','muted'));else{const mx=Math.max(...hd.map(x=>x.checkins));const bars=el('div',undefined,'bars');
+  hd.forEach(x=>{const col=el('div',undefined,'col');const w=el('div',undefined,'b');w.style.height=Math.max(4,x.checkins/mx*100)+'%';w.appendChild(el('span',x.checkins));col.appendChild(w);col.appendChild(el('small',String(x.hour_pkt).slice(11,16)));bars.appendChild(col)});
+  H.appendChild(bars)}
+ fillTable($('noshow'),['Reg','Team','Leader'],(ns.data||[]).map(r=>[r.reg_code,r.team_name,r.leader_name]),'No no-shows (close the session to compute)');
+ fillTable($('regs'),['Reg','Team','Leader','Registration','Payment','Amount','AI conf.','Checked in','Notes'],(regs.data||[]).map(r=>[r.reg_code,r.team_name,r.leader_name,{pill:r.registration_status},r.payment_status?{pill:r.payment_status}:'-',r.amount_pkr,r.ai_confidence,r.checked_in_at?fmtT(r.checked_in_at):(r.ticket_status==='no_show'?'No-show':''),r.ai_notes]),'No registrations yet');
+ const rd=rv.data||[];$('rvSum').textContent=rd.length?'('+rd.length+' shown)':'';
+ fillTable($('reviews'),['When','Team','Rating','Comment','Next event','Workshops'],rd.map(r=>[fmtT(r.submitted_at),r.team_name||r.leader_name,r.rating+'/10',r.comment,r.wants_next_event?'Yes':'',r.interested_in_workshops?'Yes':'']),'No reviews yet')}
+
+function subscribe(){const ch=sb.channel('live');
+ ['registrations','payments','checkins','reviews','sessions'].forEach(t=>ch.on('postgres_changes',{event:'*',schema:'public',table:t},()=>{clearTimeout(timer);timer=setTimeout(refresh,400)}));
+ ch.subscribe(s=>{$('liveTxt').textContent=s==='SUBSCRIBED'?'Live (updates automatically)':'Connecting...'});
+ setInterval(refresh,30000)}
+
+async function act(action){const pin=$('opin').value;if(!pin||!sel){$('actMsg').innerHTML='<div class="msg err">Enter the organizer PIN and choose a session.</div>';return}
+ if(action==='close'&&!confirm('Close this session? Everyone who did not check in becomes a no-show.'))return;
+ $('actMsg').innerHTML='<div class="msg info">Working...</div>';
+ try{const r=await fetch((action==='close'?C.urls.close:C.urls.sendReviews),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,pin,session_id:sel})});
+  const d=await r.json();let t;
+  if(!d.ok)t=d.error||'Failed';else if(action==='close')t='Session closed: '+d.checked_in+' checked in, '+d.no_show+' no-show.';else t=d.sent?('Review emails sent: '+d.sent):(d.note||'No emails to send');
+  $('actMsg').innerHTML='<div class="msg '+(d.ok?'ok':'err')+'"></div>';$('actMsg').firstChild.textContent=t;refresh()
+ }catch(e){$('actMsg').innerHTML='<div class="msg err">No connection.</div>'}}
+$('closeBtn').onclick=()=>act('close');$('revBtn').onclick=()=>act('send_reviews');
+boot();
+</script></body></html>
